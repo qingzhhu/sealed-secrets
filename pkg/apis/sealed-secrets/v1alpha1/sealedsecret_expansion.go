@@ -4,8 +4,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
+	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	runtimeserializer "k8s.io/apimachinery/pkg/runtime/serializer"
@@ -86,6 +87,7 @@ func NewSealedSecret(codecs runtimeserializer.CodecFactory, pubKey *rsa.PublicKe
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secret.GetName(),
 			Namespace: secret.GetNamespace(),
+			Annotations: secret.GetAnnotations(),
 		},
 		Spec: SealedSecretSpec{
 			EncryptedData: map[string][]byte{},
@@ -126,17 +128,38 @@ func (s *SealedSecret) Unseal(codecs runtimeserializer.CodecFactory, privKey *rs
 	label, _, _ := labelFor(smeta)
 
 	var secret v1.Secret
+	__isstringdata := false
+	data := map[string][]byte{}
 	if len(s.Spec.EncryptedData) > 0 {
-		secret.Data = map[string][]byte{}
 		for key, value := range s.Spec.EncryptedData {
 			plaintext, err := crypto.HybridDecrypt(rand.Reader, privKey, value, label)
 			if err != nil {
 				return nil, err
 			}
-			secret.Data[key] = plaintext
+			if strings.TrimRight(key, "\n") == "__isstringdata" {
+				if strings.TrimRight(string(plaintext), "\n") == "true" {
+				        fmt.Println("Request to convert to StringData")
+					__isstringdata = true
+				}
+			} else {
+				data[key] = plaintext
+		        }
+		}
+		if __isstringdata {
+		    fmt.Println("Convert to StringData")
+		    secret.StringData = map[string]string{}
+		    for key, plaintext := range data {
+			    secret.StringData[key] =  string(plaintext)
+		    }
+		} else {
+		    secret.Data = map[string][]byte{}
+		    for key, plaintext := range data {
+			    secret.Data[key] =  plaintext
+		    }
 		}
 		secret.Type = s.Type
 	} else { // Support decrypting old secrets for backward compatibility
+		fmt.Println("Old secret")
 		plaintext, err := crypto.HybridDecrypt(rand.Reader, privKey, s.Spec.Data, label)
 		if err != nil {
 			return nil, err
@@ -150,6 +173,7 @@ func (s *SealedSecret) Unseal(codecs runtimeserializer.CodecFactory, privKey *rs
 
 	// Ensure these are set to what we expect
 	secret.SetNamespace(smeta.GetNamespace())
+	secret.SetAnnotations(smeta.GetAnnotations())
 	secret.SetName(smeta.GetName())
 
 	// This is sometimes empty?  Fine - we know what the answer is

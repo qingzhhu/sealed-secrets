@@ -44,8 +44,9 @@ kubeseal: $(GO_FILES)
 %-static: $(GO_FILES)
 	CGO_ENABLED=0 $(GO) build -o $@ -installsuffix cgo $(GO_FLAGS) -ldflags "$(GO_LD_FLAGS)" ./cmd/$*
 
-docker/controller: controller-static
-	cp $< $@
+docker/controller: 
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o controller ./cmd/controller
+	cp controller docker/controller
 
 controller.image: docker/Dockerfile docker/controller
 	$(DOCKER) build -t $(CONTROLLER_IMAGE) docker/
