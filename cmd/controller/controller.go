@@ -40,17 +40,13 @@ func unseal(sclient v1.SecretsGetter, codecs runtimeserializer.CodecFactory, key
 	// messages.
 
 	objName := fmt.Sprintf("%s/%s", ssecret.GetObjectMeta().GetNamespace(), ssecret.GetObjectMeta().GetName())
-	log.Printf("Updating %s ...", objName)
+	log.Printf("Updating %s", objName)
 
 	secret, err := attemptUnseal(ssecret, keyRegistry)
 	if err != nil {
 		// TODO: Add error event
 		return err
 	}
-
-	fmt.Println("Secret: ", secret)
-	log.Printf("Secret data len: %d", len(secret.Data))
-	log.Printf("Secret stringData len: %d", len(secret.StringData))
 
 	_, err = sclient.Secrets(ssecret.GetObjectMeta().GetNamespace()).Create(secret)
 	if err != nil && errors.IsAlreadyExists(err) {
@@ -203,6 +199,7 @@ func (c *Controller) unseal(key string) error {
 		// Error wasn't already exists so is real error
 		return err
 	}
+
 
 	// Secret already exists so update it in place with new data/owner reference
 	updatedSecret, err := c.updateSecret(secret)
